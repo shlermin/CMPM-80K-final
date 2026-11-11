@@ -110,7 +110,7 @@ function love.load()
 
     charHole = narrator:newCharacter("Hole", "sprites_test/slug.png")
 
-    narrator:bindNPC(hole, charHole, "mysteriousHole.ink")
+    narrator:bindNPC(hole, charHole, "mysteriousHole")
 
     background = love.graphics.newImage('sprites_test/background.png')
     bullets = {}
@@ -347,10 +347,15 @@ function love.update(dt)
     player.y = (player.ytile-1)*64 - 4
     updateCamera(dt)
 
+    local dialogueOpen = narrator:isOpen()
+    --if dialogueOpen then
+        --return  -- don't move while dialogue is open
+    --end
+
+
     enemies.update(dt, player, bullets, gameMap)
 
-    --local dialogueOpen = narrator:isOpen()
-
+  
     for i = #bullets, 1, -1 do
         local b = bullets[i]
         b.x = b.x + math.cos(b.angle) * b.speed * dt
