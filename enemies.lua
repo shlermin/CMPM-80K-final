@@ -14,11 +14,12 @@ local M = {
     list = {},                    -- live enemies
     classes = {},                 -- registered types
     spawnTimer = 0,
-    spawnInterval = 2,
+    spawnInterval = 1.5,
     maxEnemies = 15,
     playerW = 48, playerH = 72,   -- player hitbox
     playerInvulnTime = 1.0,
     score = 0,
+    projectiles = {}  
 
 }
 
@@ -107,6 +108,22 @@ function Enemy:onDeath()
 end
 
 -- Helpers
+function Enemy:angleTo(tx, ty)
+    local cx, cy = self:center()
+    return math.atan2(ty - cy, tx - cx)
+end
+
+-- Fire a projectile from this enemy's centre
+function Enemy:shoot(angle, speed, damage, life)
+    local cx, cy = self:center()
+    table.insert(M.projectiles, {
+        x = cx, y = cy, angle = angle,
+        speed = speed or 400,
+        damage = damage or 1,
+        life = life or 3,          -- seconds before it disappears
+        radius = 15,
+    })
+end
 function Enemy:center() return self.x + self.w / 2, self.y + self.h / 2 end
 
 function Enemy:directionTo(tx, ty)
@@ -212,6 +229,42 @@ M.Enemy = Enemy
 
 -- ======================= ENEMY TYPES =======================
 
+local Gunfish = Enemy:extend("gunfish")
+Gunfish.w, Gunfish.h = 64, 64
+Gunfish.speed, Gunfish.maxHp, Gunfish.points, Gunfish.weight = 100, 25, 40, 1
+Gunfish.color = { 0.9, 0.9, 0.2 }
+Gunfish.preferredDistance = 250
+Gunfish.fireInterval = 1.5
+Gunfish.projectileSpeed = 450
+Gunfish.projectileDamage = 1
+Gunfish.inaccuracy = math.rad(3)       -- total random cone, 0 = perfect aim
+
+function Gunfish:init()
+    self.fireTimer = love.math.random() * self.fireInterval   -- stagger shots
+end
+
+function Gunfish:update(dt, target)
+    local dx, dy = self:directionTo(target.x, target.y)
+    local cx, cy = self:center()
+    local dist = math.sqrt((target.x - cx) ^ 2 + (target.y - cy) ^ 2)
+
+    -- approach if too far, back away if too close
+    if dist > self.preferredDistance + 50 then
+        self:move(dx, dy, self.speed, dt)
+    elseif dist < self.preferredDistance - 50 then
+        self:move(-dx, -dy, self.speed, dt)
+    end
+    self:face(dx)                      -- always look at the player
+
+    self.fireTimer = self.fireTimer - dt
+    if self.fireTimer <= 0 and dist < 900 then
+        self.fireTimer = self.fireInterval
+        local a = self:angleTo(target.x, target.y)
+                + (love.math.random() - 0.5) * self.inaccuracy
+        self:shoot(a, self.projectileSpeed, self.projectileDamage)
+    end
+end
+
 -- Squid: flies in a straight line, locked on at spawn
 local Squid = Enemy:extend("squid")
 Squid.w, Squid.h = 64, 64
@@ -311,7 +364,7 @@ end
 function M.load(player)
     M.list, M.classes = {}, {}
     -- add new enemy types to this list
-    for _, cls in ipairs({ Squid, Shark, Swordfish }) do M.register(cls) end
+    for _, cls in ipairs({ Squid, Shark, Swordfish, Gunfish}) do M.register(cls) end
 
     player.maxHp = player.maxHp or 5
     player.hp = player.hp or player.maxHp
@@ -363,6 +416,13 @@ local function bulletHits(b, e, dt)
     return false
 end
 
+local function circleHitsRect(c, rx, ry, rw, rh)
+    local nx = math.max(rx, math.min(c.x, rx + rw))   -- closest point on the rect
+    local ny = math.max(ry, math.min(c.y, ry + rh))
+    local dx, dy = c.x - nx, c.y - ny
+    return dx * dx + dy * dy <= c.radius * c.radius
+end
+
 function M.update(dt, player, bullets, gameMap)
     local target = { x = player.x + M.playerW / 2, y = player.y + M.playerH / 2 }
 
@@ -403,6 +463,24 @@ function M.update(dt, player, bullets, gameMap)
         end
     end
 
+    -- enemy projectiles vs player
+    for i = #M.projectiles, 1, -1 do
+        local p = M.projectiles[i]
+        p.x = p.x + math.cos(p.angle) * p.speed * dt
+        p.y = p.y + math.sin(p.angle) * p.speed * dt
+        p.life = p.life - dt
+
+        if p.life <= 0 then
+            table.remove(M.projectiles, i)
+        elseif player.invuln <= 0
+           and circleHitsRect(p, player.x, player.y, M.playerW, M.playerH) then
+            table.remove(M.projectiles, i)
+            player.invuln = M.playerInvulnTime
+            M.onPlayerHit(player, p)   -- p has .damage, like an enemy does
+            break                      -- onPlayerHit may reset the lists
+        end
+    end
+
     -- cleanup
     for i = #M.list, 1, -1 do
         local e = M.list[i]
@@ -412,6 +490,12 @@ end
 
 function M.draw()
     for _, e in ipairs(M.list) do e:draw() end
+    love.graphics.setColor(1, 0.3, 0.3)
+
+    for _, p in ipairs(M.projectiles) do
+        love.graphics.circle("fill", p.x, p.y, p.radius)
+    end
+    love.graphics.setColor(1, 1, 1)
 end
 
 return M
