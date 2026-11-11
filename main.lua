@@ -67,6 +67,7 @@ function love.load()
     enemies = require 'enemies'
     screens = {main = "game", current = "title"}
 
+
     --load in all audio files
     music = love.audio.newSource("audio/background_main.mp3", "stream")
     music:setLooping(true)
@@ -109,7 +110,7 @@ function love.load()
 
     charHole = narrator:newCharacter("Hole", "sprites_test/slug.png")
 
-    narrator:bindNPC(hole, charHole, "mysteriousHole")
+    narrator:bindNPC(hole, charHole, "mysteriousHole.ink")
 
     background = love.graphics.newImage('sprites_test/background.png')
     bullets = {}
